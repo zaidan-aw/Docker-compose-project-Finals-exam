@@ -1,0 +1,96 @@
+name: Docker_UAS
+version: "3.9"
+
+services:
+  # NGINX for web service
+  web-app:
+    image: nginx:latest
+    container_name: nginx-web-app
+    volumes:
+      - ./web-app/web-data:/usr/share/nginx/html
+      - ./web-app/logs:/var/log/nginx
+    ports:
+      - 8080:80
+    restart: on-failure:3
+    depends_on:
+      - db
+    configs:
+      - nginx-config
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 10s
+      retries: 3
+    networks:
+      - app-network
+
+  # WordPress service
+  wordpress:
+    image: wordpress:latest
+    container_name: wordpress
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: admin
+      WORDPRESS_DB_PASSWORD: unesaid
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - ./wordpress/wordpress-data:/var/www/html
+    ports:
+      - 8081:80
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: on-failure:3
+    networks:
+      - app-network
+
+  # MySQL service for Database
+  db:
+    image: mysql:8.0.27
+    container_name: mysql-db
+    env_file:
+      - ./database/.env
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: unesaid
+    volumes:
+      - ./database/db-data:/var/lib/mysql
+      - ./database/error-log:/var/log/mysql/error.log
+      - ./database/slow-log:/var/log/mysql/mysql-slow.log 
+    configs:
+      - mysql-config
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-proot_password"]
+      interval: 10s
+      retries: 3
+    networks:
+      - app-network
+  
+  # Redis Service untuk caching
+  caches:
+    image: redis:latest
+    container_name: redis_cache
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 3
+    networks:
+      - app-network
+
+volumes:
+  wordpress-data:
+  web-data:
+  db-data:
+
+networks:
+  app-network:
+    driver: bridge
+
+configs:
+  nginx-config:
+    file: ./web-app/default.conf
+  mysql-config:
+    file: ./database/mysql.cnf
